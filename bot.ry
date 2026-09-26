@@ -1,1 +1,74 @@
 
+import os from io import BytesIO
+from PIL import Image, ImageEnhance, ImageOps from telegram import Update from telegram.ext import ( Application, CommandHandler, MessageHandler, ContextTypes, filters, )
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): await update.message.reply_text( "👋 Отправь мне фотографию.\n\n" "Я автоматически улучшу её и подготовлю для объявления OLX." )
+def process_photo(data: bytes) -> BytesIO: image = Image.open(BytesIO(data))
+# Исправляем поворот по данным камеры
+image = ImageOps.exif_transpose(image)
+
+# Переводим в RGB
+if image.mode != "RGB":
+    image = image.convert("RGB")
+
+# Ограничиваем слишком большое изображение
+max_size = 2000
+image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+
+# Автоматическая коррекция контраста
+image = ImageOps.autocontrast(image, cutoff=1)
+
+# Немного улучшаем изображение
+image = ImageEnhance.Brightness(image).enhance(1.04)
+image = ImageEnhance.Contrast(image).enhance(1.08)
+image = ImageEnhance.Color(image).enhance(1.04)
+image = ImageEnhance.Sharpness(image).enhance(1.15)
+
+# Сохраняем качественный JPEG
+output = BytesIO()
+output.name = "olx_photo.jpg"
+
+image.save(
+    output,
+    format="JPEG",
+    quality=92,
+    optimize=True
+)
+
+output.seek(0)
+return output
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): message = update.message
+if not message or not message.photo:
+    return
+
+status = await message.reply_text("⏳ Обрабатываю фотографию...")
+
+try:
+    photo = message.photo[-1]
+    telegram_file = await photo.get_file()
+
+    data = await telegram_file.download_as_bytearray()
+
+    result = process_photo(bytes(data))
+
+    await message.reply_photo(
+        photo=result,
+        caption="✅ Готово! Фото подготовлено для OLX."
+    )
+
+    await status.delete()
+
+except Exception as error:
+    print("ERROR:", error)
+    await status.edit_text(
+        "❌ Не удалось обработать фото. Попробуй другое изображение."
+    )
+def main(): if not BOT_TOKEN: raise RuntimeError( "Не найден BOT_TOKEN. Добавь его в переменные окружения." )
+app = Application.builder().token(BOT_TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+
+print("Бот запущен...")
+app.run_polling()
+if name == "main": main()
