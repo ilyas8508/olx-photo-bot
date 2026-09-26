@@ -72,3 +72,7 @@ app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 print("Бот запущен...")
 app.run_polling()
 if name == "main": main()
+requirements.txt
+
+python-telegram-bot
+Pillow
